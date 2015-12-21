@@ -1,11 +1,11 @@
-## Resource API
+File Manager API for ResourceSpace
 
-#### Usage:
-http://url/plugins/api_file_manager/?key=[authkey]&[optional parameters]
+Usage:
+http://myResourceSpaceDomain.org/plugins/api_file_manager/?key=[authkey]&[optional parameters]
 
-#### Parameters:
+Parameters:
 
-*get params of the current request*
+get params of the current request
 ============================================================
 
 // general params
