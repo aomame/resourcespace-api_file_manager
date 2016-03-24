@@ -23,6 +23,9 @@ $collection_id=getval("collection_id","");
 $collection_name=getval("collection_name","");
 $hidden_collections=getval("hidden_collections","");
 $remove_unserscore=getval("remove_unserscore",FALSE);
+$download_size=getval("download_size","");
+$last_sync=getval("last_sync","");
+$has_new_version_of_file=getval("has_new_version_of_file", FALSE);
 
 // get
 $get=getval("get",FALSE);
@@ -161,13 +164,7 @@ if(!empty($get_file_thumbnail_link)){
 
 // get all collections
 if($get && $get_all_collections){
-  $filterCollections = $hidden_collections ? "c.ref NOT IN ($hidden_collections)" : 1;
-  $filterUser = $user_id ? "AND c.user=$user_id" : '';
-  $query = "SELECT c.*, c.theme2, c.theme3, c.keywords, u.fullname, u.username, c.home_page_publish, c.home_page_text, c.home_page_image,c.session_id 
-            FROM collection c 
-              LEFT OUTER JOIN user u ON u.ref = c.user
-            WHERE $filterCollections $filterUser";
-  $all_collections = sql_query($query);
+  $all_collections = get_user_collections($user_id);
   printJson($all_collections);
 }
 
@@ -228,25 +225,32 @@ if($get_original_file_name && $file_id) {
 
 // get the ID of a file by its original name: file_name.pdf
 if($get_file_id && $file_name){
+
+  $file_name = urldecode($file_name);
   
   //get all file ID's with name $file_name
-  $fileIds = sql_query("SELECT resource FROM resource_data WHERE resource_type_field=51 AND value LIKE '$file_name'");
-  
+  $fileIds = sql_query("SELECT resource FROM resource_data WHERE resource_type_field=51 AND value LIKE '%$file_name%'");
+
   if($collection_id){
     // get only the file from collection $collection_id  
     foreach($fileIds as $file){
       $ref = $file['resource'];
       $s = sql_query("SELECT resource FROM collection_resource WHERE collection=$collection_id AND resource=$ref");
-      if(!empty($s[0]['resource'])){
+
+      if(!empty($s[0]['resource'])){ 
         $fileId = $s[0]['resource'];
-      }else{
-        $fileId = $fileIds[0]['resource'];    
       }
+
     }
   }else{
     $fileId = $fileIds[0]['resource'];
   }
-  $data = array('file_id' => $fileId);
+  
+  $fileId = $fileId ? $fileId : 0;
+  $data = array(
+    'file_id' => $fileId,
+    'collection_id' => $collection_id
+  );
   printJson($data);
 }
 
@@ -265,9 +269,20 @@ if($get_file_exists && $collection_id && $file_id){
 
 // get downscaled preview of an original image
 if($get_file_preview_link){
-  //                                                       false                                 -   - 
-  $preview_link = get_resource_path($get_file_preview_link,false,'scr',false,'jpg',-1,1,false,'',-1);
+  
+  // sizes: $download_size
+  // -----------------------------
+  // thm - Thumbnail
+  // pre - Preview
+  // scr - Screen
+  // lpr - Low resolution print (default)
+  // hpr - High resolution print
+  // col - Collection
+  // '' (empty) - original file
+  $download_size = $download_size ? $download_size : ''; 
+  $preview_link = get_resource_path($get_file_preview_link,false,$download_size,true,'jpg',-1,1,false,'',-1);
   $file_headers = get_headers($preview_link);
+
   $data = array(
     'preview_link' => $preview_link,
     'file_header' => $file_headers[0] 
@@ -275,7 +290,39 @@ if($get_file_preview_link){
   printJson($data);
 }
 
-
+// check if version of file exists
+if($has_new_version_of_file){
+  
+  $hasNewVersion = false;
+  
+  $lastModified = sql_query("SELECT file_modified FROM resource WHERE ref='$file_id'");
+  $lastModified = $lastModified[0]['file_modified'];
+  
+  if($lastModified){
+    $rsLastModified = strtotime($lastModified);
+    $lastSync = intval($last_sync);
+    if($rsLastModified > $lastSync){
+      // file has changed
+      $hasNewVersion = true;
+    }else{
+      // files hasn't changes
+      $hasNewVersion = false;
+    }    
+  }else{
+    // file has never been changed since first upload
+    $hasNewVersion = false;
+  }
+  
+  printJson($hasNewVersion);
+  // Debug
+  // printJson(array(
+  //   'last-synced' => $lastSync,
+  //   'RS last Modified' => $rsLastModified,
+  //   'RS string' => $lastModified,
+  //    'has New Version' => $hasNewVersion
+  // ));
+  
+}
 
 
 
@@ -286,10 +333,10 @@ if($get_file_preview_link){
 // - delete collection and all files in the collection
 // ============================================================
 
-// delete file from collection
-if($delete_file && $collection_id && $file_id){ 
-  $delete = remove_resource_from_collection($file_id, $collection_id);
-  printJson($delete);
+// delete file
+if($delete_file && $file_id){ 
+  delete_resource($file_id);
+  printJson(true);
 }
 
 // delete collection and all files in the collection
